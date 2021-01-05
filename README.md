@@ -18,5 +18,8 @@ It's mainly meant as a more readable and flexible alternative to the struct libr
     #output: Point(x=3, y=7) 
 # Roadmap
 * Add unions
+* Add versioned classes (like unions but switches to subclasses based on field in parent class)
+* Add Optional fields
+* Add C alignment support
 * Add serialization
 * Add bits to the decode/encode
