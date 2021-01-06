@@ -22,12 +22,23 @@ class PointType(Uint8, Enum):
 @dataclass
 class Container:
     point_type: PointType
+    point: Union[Point2D, Point3D] = union('point_type', {
+        PointType.POINT_2D: Point2D,
+        PointType.POINT_3D: Point3D
+    })
+
+@dataclass
+class AutoContainer:
+    point_type: PointType
     point: Union[Point2D, Point3D] = union('point_type')
 
-
-@mark.skip
 def test_basic():
     obj = from_bytes(Container, b'\x01\x02\x05')
     assert type(obj) == Container
     assert obj.point_type == PointType.POINT_2D
     assert obj.point == Point2D(2,5)
+
+    obj = from_bytes(AutoContainer, b'\x02\x02\x05\x07')
+    assert type(obj) == AutoContainer
+    assert obj.point_type == PointType.POINT_3D
+    assert obj.point == Point3D(2,5,7)
