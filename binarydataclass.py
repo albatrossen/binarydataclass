@@ -15,7 +15,7 @@ def register(handler):
         return cls
     return onto
 
-def find_handler(cls: Type[T] , io: BytesIO, scope = None):
+def find_handler(cls: Type[T]):
     handler = getattr(cls, 'from_bytesio', None)
     if handler:
         return handler
@@ -26,14 +26,14 @@ def find_handler(cls: Type[T] , io: BytesIO, scope = None):
         return handler
 
     if is_dataclass(cls):
+        decoders = tuple(
+            (field.name, field.type, field.metadata.get('decoder', from_bytesio))
+            for field in fields(cls)
+        )
         def handler(cls: Type[T] , io: BytesIO, scope = None):
             values = {}
-            for field in fields(cls):
-                decoder = field.metadata.get('decoder', None)
-                if decoder:
-                    values[field.name] = decoder(field.type, io, values)
-                else:
-                    values[field.name] = from_bytesio(field.type, io, values)
+            for name, type, decoder in decoders:
+                values[name] = decoder(type, io, values)
             return cls(**values)
         return handler
     
@@ -46,7 +46,7 @@ def from_bytesio(cls: Type[T] , io: BytesIO, scope = None) -> T:
     try:
         handler = registry[cls]
     except KeyError:
-        handler = find_handler(cls, io, scope)
+        handler = find_handler(cls)
         register(handler)(cls)
     return handler(cls, io, scope)
 
