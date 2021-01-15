@@ -17,6 +17,7 @@ It's mainly meant as a more readable and flexible alternative to the struct libr
     print(from_bytes(Point, b'\x03\x07'))
     #output: Point(x=3, y=7) 
 # Roadmap
+* Sequence until sentinel
 * Add versioned classes (like unions but switches to subclasses based on field in parent class)
 * Add Optional fields
 * Add C alignment support
