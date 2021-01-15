@@ -10,7 +10,7 @@ setuptools.setup(
     author_email="sindal@gmail.com",
     description="Binary Conversion for dataclass classes",
     long_description=long_description,
-    long_description_content_type="text/markdown", 
+    long_description_content_type="text/markdown",
     url="https://github.com/albatrossen/binarydataclass",
     packages=setuptools.find_packages(),
     classifiers=[
@@ -19,5 +19,5 @@ setuptools.setup(
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ],
-    python_requires='>=3.6',
+    python_requires=">=3.6",
 )

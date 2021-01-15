@@ -2,6 +2,7 @@ from binarydataclass import from_bytes, Uint8
 from dataclasses import dataclass
 from enum import Enum, auto
 
+
 class Cheese(Uint8, Enum):
     RED_LEICESTER = auto()
     TILSIT = auto()
@@ -47,10 +48,15 @@ class Cheese(Uint8, Enum):
     ILLCHESTER = auto()
     LIMBURGER = auto()
 
+
 @dataclass
-class Cheeseshop():
+class Cheeseshop:
     last_requested_out_of_stock_item: Cheese
 
-def test_basic():
-    obj = from_bytes(Cheeseshop, b'\x22')
-    assert type(obj.last_requested_out_of_stock_item) == Cheese and obj.last_requested_out_of_stock_item == Cheese.GORGONZOLA
+
+def test_enum():
+    obj = from_bytes(Cheeseshop, b"\x22")
+    assert (
+        type(obj.last_requested_out_of_stock_item) == Cheese
+        and obj.last_requested_out_of_stock_item == Cheese.GORGONZOLA
+    )
