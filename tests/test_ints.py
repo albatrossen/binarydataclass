@@ -1,4 +1,4 @@
-from binarydataclass import from_bytes, Uint8, Uint16, Uint32, Uint64, Int8, Int16, Int32, Int64, len_from, binaryfield
+from binarydataclass import from_bytes, Uint8, Uint16, Uint32, Uint64, Int8, Int16, Int32, Int64, binaryfield, int_decoder
 from dataclasses import dataclass
 
 @dataclass
@@ -14,14 +14,14 @@ class PointWithTypes:
 
 @dataclass
 class PointWithoutTypes:
-    a: int = binaryfield(bytes=1)
-    b: int = binaryfield(bytes=2)
-    c: int = binaryfield(bytes=4)
-    d: int = binaryfield(bytes=8)
-    e: int = binaryfield(bytes=1, signed=True)
-    f: int = binaryfield(bytes=2, signed=True)
-    g: int = binaryfield(bytes=4, signed=True)
-    h: int = binaryfield(bytes=8, signed=True)
+    a: int = binaryfield(int_decoder(bits=8))
+    b: int = binaryfield(int_decoder(bits=16))
+    c: int = binaryfield(int_decoder(bits=32))
+    d: int = binaryfield(int_decoder(bits=64))
+    e: int = binaryfield(int_decoder(bits=8, signed=True))
+    f: int = binaryfield(int_decoder(bits=16, signed=True))
+    g: int = binaryfield(int_decoder(bits=32, signed=True))
+    h: int = binaryfield(int_decoder(bits=64, signed=True))
 
 def test_with_types():
     obj = from_bytes(PointWithTypes, b'\x01\x00\x02\x00\x00\x00\x05\xff\xff\xff\xff\xff\xff\xff\xff\x01\xff\xff\x00\x00\x00\x05\xff\xff\xff\xff\xff\xff\xff\xff')

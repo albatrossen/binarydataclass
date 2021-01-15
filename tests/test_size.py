@@ -1,4 +1,4 @@
-from binarydataclass import from_bytes, Uint8, len_from, Uint64
+from binarydataclass import from_bytes, Uint8, Uint64
 from dataclasses import dataclass
 from typing import List
 from pytest import raises

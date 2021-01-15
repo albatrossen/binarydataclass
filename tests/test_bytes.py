@@ -1,10 +1,10 @@
-from binarydataclass import from_bytes, Uint8, len_from
+from binarydataclass import from_bytes, Uint8, binaryfield, octets
 from dataclasses import dataclass
 
 @dataclass
 class Point:
     x: Uint8
-    y: bytes = len_from(2)
+    y: bytes = binaryfield(octets(2))
 
 def test_basic():
     obj = from_bytes(Point, b'\x01\x02\x05')

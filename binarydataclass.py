@@ -1,80 +1,54 @@
 from io import BytesIO
 from dataclasses import is_dataclass, fields, field
 from typing import TypeVar, Type, Union, Any, List
-from enum import Enum
+from enum import Enum, auto
 import inspect
 import dataclasses
 
 T = TypeVar('T')
 
-def _resolve(scope, metadata, name):
-    value = metadata.get(name, None)
-    if isinstance(value, str):
-        return scope[value]
-    return value
+registry = {}
 
-def _list_from_bytesio(cls: Type[T] , io: BytesIO, scope, metadata):
-    subtype = cls.__args__[0]
-    count = _resolve(scope, metadata, 'size')
-    return [from_bytesio(subtype, io, scope, metadata) for _ in range(count)]
+def register(handler):
+    def onto(cls):
+        registry[cls] = handler
+        return cls
+    return onto
 
-def _union_from_bytesio(cls: Type[T] , io: BytesIO, scope, metadata):
-    tag = _resolve(scope, metadata, 'union_tag')
-    union_map = _resolve(scope, metadata, 'union_map')
-    if union_map is None:
-        union_map = dict(zip(tag.__class__, cls.__args__))
-    subcls = union_map[tag]
-    return from_bytesio(subcls, io, scope, metadata)
-
-
-def _bytes_from_bytesio(cls: Type[T] , io: BytesIO, scope, metadata):
-    size = _resolve(scope, metadata, 'bits') // 8
-    val = bytearray(size)
-    read = io.readinto(val)
-    if read != size:
-        raise ValueError(f"Expected {size} bytes but only got {read}")
-    return cls(val)
-
-def _int_from_bytesio(cls: Type[T] , io: BytesIO, scope, metadata):
-    size = _resolve(scope, metadata, 'bits')
-    if size is None:
-        size = getattr(cls, 'bits')
-    signed = _resolve(scope, metadata, 'signed')
-    if signed is None:
-        signed = getattr(cls, 'signed', False)
-    val = _bytes_from_bytesio(bytearray, io, scope, {'bits': size})
-    return cls(int.from_bytes(val, 'big', signed=signed))
-
-
-register = {
-    list: _list_from_bytesio,
-    Union: _union_from_bytesio,
-    bytes: _bytes_from_bytesio,
-    int: _int_from_bytesio,
-}
-
-def from_bytesio(cls: Type[T] , io: BytesIO, scope = None, metadata = None) -> T:
-    handler = register.get(cls, None)
-    if not handler:
-        handler = getattr(cls, 'from_bytesio', None)
-    if not handler:
-        orig_type = getattr(cls, '__origin__', None)
-        handler = register.get(orig_type, None)
+def find_handler(cls: Type[T] , io: BytesIO, scope = None):
+    handler = getattr(cls, 'from_bytesio', None)
     if handler:
-        return handler(cls, io, scope, metadata)
+        return handler
+
+    orig_type = getattr(cls, '__origin__', None)
+    handler = registry.get(orig_type, None)
+    if handler:
+        return handler
+
     if is_dataclass(cls):
-        values = {}
-        for field in fields(cls):
-            values[field.name] = from_bytesio(field.type, io, values, field.metadata)
-        return cls(**values)
-    if cls not in register:
-        register[cls] = None
-        for sub_class in cls.__mro__[1:]:
-            if sub_class in register:
-                handler = register[sub_class]
-                register[cls] = handler
-                return handler(cls, io, scope, metadata)
+        def handler(cls: Type[T] , io: BytesIO, scope = None):
+            values = {}
+            for field in fields(cls):
+                decoder = field.metadata.get('decoder', None)
+                if decoder:
+                    values[field.name] = decoder(field.type, io, values)
+                else:
+                    values[field.name] = from_bytesio(field.type, io, values)
+            return cls(**values)
+        return handler
+    
+    for sub_class in cls.__mro__[1:]:
+        if sub_class in registry:
+            return registry[sub_class]
     raise NotImplementedError()
+
+def from_bytesio(cls: Type[T] , io: BytesIO, scope = None) -> T:
+    try:
+        handler = registry[cls]
+    except KeyError:
+        handler = find_handler(cls, io, scope)
+        register(handler)(cls)
+    return handler(cls, io, scope)
 
 def from_bytes(cls: Type[T], s) -> T:
     data = BytesIO(s)
@@ -83,46 +57,92 @@ def from_bytes(cls: Type[T], s) -> T:
         raise ValueError('Extra data at end')
     return decoded
 
-def binaryfield(field=None, endianess=None, bits=None, signed=None, bytes=None, size=None, **kwargs):
-    if bits and bytes:
-        raise ValueError("Not possible to supply both bits and bytes at the same time")
-    elif bytes:
-        bits = 8 * bytes
-    del bytes
-    metadata = {k:v for k,v in locals().items() if k is not 'kwargs'}
-    return dataclasses.field(**kwargs, metadata=metadata)
+def binaryfield(decoder=None, **kwargs):
+    return dataclasses.field(**kwargs, metadata={'decoder': decoder})
 
+def union(*args, **kwargs):
+    return binaryfield(union_decoder(*args, **kwargs))
 
-def len_from(source, **kwargs):
-    return binaryfield(bytes=source, **kwargs)
+def union_decoder(source, union_map=None, **kwargs):
+    def handler(cls: Type[T] , io: BytesIO, scope):
+        nonlocal union_map
+        tag = scope[source]
+        if union_map is None:
+            union_map = dict(zip(tag.__class__, cls.__args__))
+        subcls = union_map[tag]
+        return from_bytesio(subcls, io, scope)
+    return handler
 
-def union(source, union_map=None, **kwargs):
-    return field(metadata={'union_tag': source, 'union_map': union_map}, **kwargs)
+def int_decoder(bits, signed = False, endianess = 'big'):
+    if bits % 8 != 0:
+        raise NotImplementedError()
+    size = bits // 8
+    def handler(cls: Type[T] , io: BytesIO, scope = None):
+        val = readbytes(io, size)
+        return cls(int.from_bytes(val, endianess, signed=signed))
+    return handler
 
+def fixed_size(num_elements):
+    def handler(cls: Type[T] , io: BytesIO, scope = None):
+        subtype = cls.__args__[0]
+        return [from_bytesio(subtype, io, scope) for _ in range(num_elements)]
+        
+    return handler
+
+def var_size(field_name):
+    def handler(cls: Type[T] , io: BytesIO, scope = None):
+        subtype = cls.__args__[0]
+        num_elements = scope[field_name]
+        return [from_bytesio(subtype, io, scope) for _ in range(num_elements)]
+        
+    return handler
+
+def readbytes(io, count):
+    val = bytearray(count)
+    read = io.readinto(val)
+    if read != count:
+        raise ValueError(f"Expected {count} bytes but only got {read}")
+    return val
+
+def octets(size):
+    if isinstance(size, str):
+        def handler(cls: Type[T] , io: BytesIO, scope = None):
+            return readbytes(io, scope[size])
+    elif isinstance(size, int):
+        def handler(cls: Type[T] , io: BytesIO, scope = None):
+            return readbytes(io, size)
+    else:
+        raise NotImplementedError()
+    return handler
+
+@register(int_decoder(bits=8))
 class Uint8(int):
-    bits = 8
+    pass
 
+@register(int_decoder(bits=16))
 class Uint16(int):
-    bits = 16
+    pass
 
+@register(int_decoder(bits=32))
 class Uint32(int):
-    bits = 32
+    pass
 
+@register(int_decoder(bits=64))
 class Uint64(int):
-    bits = 64
+    pass
 
+@register(int_decoder(bits=8, signed = True))
 class Int8(int):
-    bits = 8
-    signed = True
+    pass
 
+@register(int_decoder(bits=16, signed = True))
 class Int16(int):
-    bits = 16
-    signed = True
+    pass
 
+@register(int_decoder(bits=32, signed = True))
 class Int32(int):
-    bits = 32
-    signed = True
+    pass
 
+@register(int_decoder(bits=64, signed = True))
 class Int64(int):
-    bits = 64
-    signed = True
+    pass

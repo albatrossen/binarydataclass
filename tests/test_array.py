@@ -1,4 +1,4 @@
-from binarydataclass import from_bytes, Uint8, binaryfield
+from binarydataclass import from_bytes, Uint8, binaryfield, var_size, fixed_size
 from dataclasses import dataclass
 from typing import List
 
@@ -10,11 +10,11 @@ class Point:
 @dataclass
 class PolyLine:
     num_points: Uint8
-    points: List[Point] = binaryfield(size='num_points')
+    points: List[Point] = binaryfield(decoder=var_size('num_points'))
 
 @dataclass
 class Triangle:
-    points: List[Point] =  binaryfield(size=3)
+    points: List[Point] = binaryfield(decoder=fixed_size(3))
 
 
 def test_basic():
